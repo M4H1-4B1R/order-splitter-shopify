@@ -1,6 +1,6 @@
 import { Page, Tabs } from "@shopify/polaris";
 import { useState, useCallback } from "react";
-import { useNavigate, useLocation } from "@remix-run/react";
+import { useNavigate, useLocation } from "react-router";
 import AppSettings from "./app.settings";
 import AppLogs from "./app.logs";
 

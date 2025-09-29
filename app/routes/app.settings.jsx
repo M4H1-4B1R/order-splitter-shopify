@@ -1,6 +1,6 @@
 
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, Form } from "@remix-run/react";
+import { useLoaderData, useSubmit, Form } from "react-router";
 import {
   Page, 
   Layout, 
@@ -121,7 +121,7 @@ export default function AppSettings() {
               title="Order Splitting"
               choices={[{ label: 'Enable order splitting logic', value: 'true' }]}
               selected={splittingEnabled ? ['true'] : []}
-              onChange={(value) => setSplittingEnabled(value.includes('true''))}
+              onChange={(value) => setSplittingEnabled(value.includes('true'))}
             />
             <Button onClick={handleSaveSettings} variant="primary">Save Settings</Button>
           </BlockStack>

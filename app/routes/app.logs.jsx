@@ -1,6 +1,6 @@
 
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData } from "react-router";
 import { Page, Card, DataTable, Pagination, BlockStack, Text } from "@shopify/polaris";
 import { format } from "date-fns";
 import db from "../db.server";

@@ -1,5 +1,4 @@
 
-import { json } from "@remix-run/node";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
 
@@ -119,7 +118,7 @@ export const action = async ({ request }) => {
     const settings = await db.appSettings.findUnique({ where: { shop } });
     if (!settings?.splittingEnabled) {
       console.log("Order splitting is disabled for this shop.");
-      return json({ message: "Splitting disabled." });
+      return new Response(JSON.stringify({ message: "Splitting disabled." }));
     }
 
     const orderGid = `gid://shopify/Order/${payload.id}`;
@@ -138,13 +137,13 @@ export const action = async ({ request }) => {
     // 2. Check for processing tags
     if (order.tags.includes("split-processed") || order.tags.includes("pre-sale-retained")) {
       console.log(`Order ${order.name} already processed.`);
-      return json({ message: "Order already processed." });
+      return new Response(JSON.stringify({ message: "Order already processed." }));
     }
     
     // 3. Check payment status
     if (order.displayFinancialStatus !== 'PAID') {
         console.log(`Order ${order.name} is not fully paid.`);
-        return json({ message: "Order not paid." });
+        return new Response(JSON.stringify({ message: "Order not paid." }));
     }
 
     const lineItems = order.lineItems.nodes;
@@ -174,7 +173,7 @@ export const action = async ({ request }) => {
         },
       });
       console.log(`Order ${order.name} retained. Reason: ${tag}`);
-      return json({ message: "Order retained." });
+      return new Response(JSON.stringify({ message: "Order retained." }));
     }
 
     // 5. Logic for splitting the order
@@ -245,7 +244,7 @@ export const action = async ({ request }) => {
     });
 
     console.log(`Order ${order.name} processed successfully.`);
-    return json({ success: true });
+    return new Response(JSON.stringify({ success: true }));
 
   } catch (error) {
     console.error("--- Webhook Processing Error ---");

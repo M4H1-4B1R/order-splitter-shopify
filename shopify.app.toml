@@ -1,28 +1,20 @@
-# This file stores configurations for your Shopify app.
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-name = "Order Splitter"
-client_id = "d2a89a473183a439b8b80a788a152354"
+client_id = "34f78572c2ea78c4885d7cf1eed5a6dc"
+name = "order-splitter-next"
 application_url = "https://shopify.dev/apps/default-app-home"
 embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-dev_store_url = "abir-dev-store.myshopify.com"
 include_config_on_deploy = true
+
+[webhooks]
+api_version = "2025-10"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_products,read_orders,write_orders,read_inventory,write_inventory,read_locations"
+scopes = ""
 
 [auth]
 redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
-
-[webhooks]
-api_version = "2024-07"
-
-[webhooks.subscriptions]
-topics = [ "orders/create" ]
-uri = "/webhooks"
-
-[pos]
-embedded = false

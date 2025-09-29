@@ -1,4 +1,4 @@
-import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import { AppProvider } from "@shopify/polaris";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css";
 
@@ -18,7 +18,6 @@ export default function App() {
           <Outlet />
         </AppProvider>
         <ScrollRestoration />
-        <LiveReload />
         <Scripts />
       </body>
     </html>
