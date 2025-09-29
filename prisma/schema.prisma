@@ -1,0 +1,44 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Session {
+  id          String    @id
+  shop        String
+  state       String
+  isOnline    Boolean   @default(false)
+  scope       String?
+  expires     DateTime?
+  accessToken String
+  userId      BigInt?
+}
+
+model AppSettings {
+  id              Int     @id @default(autoincrement())
+  shop            String  @unique
+  splittingEnabled Boolean @default(true)
+}
+
+model LocationMapping {
+  id            Int     @id @default(autoincrement())
+  shop          String
+  locationCode  String
+  locationGid   String
+
+  @@unique([shop, locationCode])
+}
+
+model SplitLog {
+  id              Int      @id @default(autoincrement())
+  shop            String
+  originalOrderId String
+  splitOrderIds   String? // Comma-separated list of new order IDs
+  retained        Boolean
+  message         String
+  createdAt       DateTime @default(now())
+}
