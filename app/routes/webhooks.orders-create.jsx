@@ -1,4 +1,3 @@
-
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
 
@@ -8,6 +7,15 @@ const GET_ORDER_DETAILS_QUERY = `
       id
       name
       tags
+      metafields(namespaces: ["custom"]) {
+        edges {
+          node {
+            namespace
+            key
+            value
+          }
+        }
+      }
       displayFinancialStatus
       lineItems(first: 50) {
         nodes {
@@ -103,6 +111,22 @@ const TAGS_ADD_MUTATION = `
   }
 `;
 
+const METAFIELD_UPSERT_MUTATION = `
+  mutation metafieldUpsert($ownerId: ID!, $namespace: String!, $key: String!, $value: String!, $type: String!) {
+    metafieldUpsert(ownerId: $ownerId, namespace: $namespace, key: $key, value: $value, type: $type) {
+      metafield {
+        id
+        key
+        value
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
 export const action = async ({ request }) => {
   const { topic, shop, admin, payload } = await authenticate.webhook(request);
 
@@ -135,22 +159,35 @@ export const action = async ({ request }) => {
     }
 
     // 2. Check for processing tags
-    if (order.tags.includes("split-processed") || order.tags.includes("pre-sale-retained")) {
-      console.log(`Order ${order.name} already processed.`);
-      return new Response(JSON.stringify({ message: "Order already processed." }));
+    const existingTags = order.tags || [];
+    const metafields = (order.metafields?.edges || []).map((e) => e.node) || [];
+
+    // Duplicate prevention: check for existing split_id metafield or tags
+    const hasSplitId = metafields.find(
+      (mf) => mf.namespace === "custom" && mf.key === "split_id"
+    );
+    if (
+      existingTags.includes("split-processed") ||
+      existingTags.includes("pre-sale-retained") ||
+      hasSplitId
+    ) {
+      console.log(`Order ${order.name} already processed or has split_id.`);
+      return new Response(
+        JSON.stringify({ message: "Order already processed." })
+      );
     }
-    
+
     // 3. Check payment status
-    if (order.displayFinancialStatus !== 'PAID') {
-        console.log(`Order ${order.name} is not fully paid.`);
-        return new Response(JSON.stringify({ message: "Order not paid." }));
+    if (order.displayFinancialStatus !== "PAID") {
+      console.log(`Order ${order.name} is not fully paid.`);
+      return new Response(JSON.stringify({ message: "Order not paid." }));
     }
 
     const lineItems = order.lineItems.nodes;
     const presaleItems = [];
     const nonPresaleItems = [];
 
-    lineItems.forEach(item => {
+    lineItems.forEach((item) => {
       if (item.location?.isPresale?.value === "true") {
         presaleItems.push(item);
       } else {
@@ -161,15 +198,33 @@ export const action = async ({ request }) => {
     // 4. Decide action based on item types
     if (presaleItems.length === 0 || presaleItems.length === lineItems.length) {
       // Case: No pre-sale items OR all items are pre-sale -> Retain original order
-      const tag = presaleItems.length === 0 ? "no-presale-items" : "pre-sale-retained";
-      await admin.graphql(TAGS_ADD_MUTATION, { variables: { id: orderGid, tags: [tag] } });
-      
+      const tag =
+        presaleItems.length === 0 ? "no-presale-items" : "pre-sale-retained";
+      await admin.graphql(TAGS_ADD_MUTATION, {
+        variables: { id: orderGid, tags: [tag] },
+      });
+
+      // Add a split_id metafield so retries won't re-process
+      const splitId = `split_${Date.now()}`;
+      await admin.graphql(METAFIELD_UPSERT_MUTATION, {
+        variables: {
+          ownerId: orderGid,
+          namespace: "custom",
+          key: "split_id",
+          value: splitId,
+          type: "single_line_text_field",
+        },
+      });
+
       await db.splitLog.create({
         data: {
           shop,
           originalOrderId: order.name,
           retained: true,
-          message: presaleItems.length === 0 ? "No pre-sale items in order." : "All items are pre-sale; order retained.",
+          message:
+            presaleItems.length === 0
+              ? "No pre-sale items in order."
+              : "All items are pre-sale; order retained.",
         },
       });
       console.log(`Order ${order.name} retained. Reason: ${tag}`);
@@ -187,11 +242,13 @@ export const action = async ({ request }) => {
       }
       presaleGroups[locationCode].push(item);
     }
-    
-    const locationMappings = await db.locationMapping.findMany({ where: { shop } });
+
+    const locationMappings = await db.locationMapping.findMany({
+      where: { shop },
+    });
     const mappingDict = locationMappings.reduce((acc, map) => {
-        acc[map.locationCode] = map.locationGid;
-        return acc;
+      acc[map.locationCode] = map.locationGid;
+      return acc;
     }, {});
 
     const splitOrderIds = [];
@@ -200,14 +257,16 @@ export const action = async ({ request }) => {
     for (const locationCode in presaleGroups) {
       const items = presaleGroups[locationCode];
       const locationId = mappingDict[locationCode];
-      
+
       if (!locationId) {
-          console.warn(`No location mapping found for code: ${locationCode}. Skipping split.`);
-          continue;
+        console.warn(
+          `No location mapping found for code: ${locationCode}. Skipping split.`
+        );
+        continue;
       }
 
       const newOrder = {
-        lineItems: items.map(item => ({
+        lineItems: items.map((item) => ({
           variantId: item.variant.id,
           quantity: item.quantity,
         })),
@@ -228,9 +287,26 @@ export const action = async ({ request }) => {
     // 6. Update original order (this is complex with OrderEdit mutations)
     // For this example, we'll just tag it. A real implementation would remove the presale items.
     console.log("--- Would update original order:", order.name, "---");
-    console.log("To contain only items:", nonPresaleItems.map(i => i.variant.id));
-    
-    await admin.graphql(TAGS_ADD_MUTATION, { variables: { id: orderGid, tags: ["split-processed"] } });
+    console.log(
+      "To contain only items:",
+      nonPresaleItems.map((i) => i.variant.id)
+    );
+
+    await admin.graphql(TAGS_ADD_MUTATION, {
+      variables: { id: orderGid, tags: ["split-processed"] },
+    });
+
+    // Add a persistent split_id metafield for tracking and duplicate prevention
+    const splitId = `split_${Date.now()}`;
+    await admin.graphql(METAFIELD_UPSERT_MUTATION, {
+      variables: {
+        ownerId: orderGid,
+        namespace: "custom",
+        key: "split_id",
+        value: splitId,
+        type: "single_line_text_field",
+      },
+    });
 
     // 7. Log the split action
     await db.splitLog.create({
@@ -245,7 +321,6 @@ export const action = async ({ request }) => {
 
     console.log(`Order ${order.name} processed successfully.`);
     return new Response(JSON.stringify({ success: true }));
-
   } catch (error) {
     console.error("--- Webhook Processing Error ---");
     console.error(error);
