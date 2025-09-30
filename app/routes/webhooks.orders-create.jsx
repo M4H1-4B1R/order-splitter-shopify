@@ -201,6 +201,50 @@ const DRAFT_ORDER_COMPLETE_MUTATION = `
   }
 `;
 
+// --- Input sanitization helpers ---
+function clampString(input, max = 2000) {
+  if (input == null) return "";
+  const s = String(input);
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+function sanitizeOrderId(id) {
+  if (id == null) throw new Error("Missing order id in webhook payload");
+  const s = String(id).trim();
+  if (!/^\d+$/.test(s)) {
+    throw new Error("Invalid order id");
+  }
+  return s;
+}
+
+function sanitizeCustomerId(id) {
+  if (id == null) return null;
+  const s = String(id).trim();
+  if (!/^\d+$/.test(s)) return null;
+  return s;
+}
+
+function sanitizeShippingAddress(addr) {
+  if (!addr || typeof addr !== "object") return null;
+  const get = (keys, max = 250) => {
+    for (const k of keys) {
+      if (addr[k]) return clampString(addr[k], max);
+    }
+    return undefined;
+  };
+  return {
+    firstName: get(["first_name", "firstName"], 100) || undefined,
+    lastName: get(["last_name", "lastName"], 100) || undefined,
+    address1: get(["address1"], 250) || undefined,
+    address2: get(["address2"], 250) || undefined,
+    city: get(["city"], 100) || undefined,
+    province: get(["province"], 100) || undefined,
+    country: get(["country"], 100) || undefined,
+    zip: get(["zip", "postal_code"], 50) || undefined,
+    phone: get(["phone"], 50) || undefined,
+  };
+}
+
 // Helper to call admin.graphql with retries and exponential backoff to handle transient API errors / rate limits
 async function graphqlWithRetry(admin, query, opts = {}, maxRetries = 3) {
   let attempt = 0;
@@ -236,6 +280,26 @@ async function graphqlWithRetry(admin, query, opts = {}, maxRetries = 3) {
           `graphqlWithRetry failed after ${attempt} attempts:`,
           err.message
         );
+        // If a shop context was provided in opts.meta.shop, write an alert to splitLog for visibility
+        try {
+          const shopForAlert = opts?.meta?.shop;
+          if (shopForAlert) {
+            await db.splitLog.create({
+              data: {
+                shop: shopForAlert,
+                originalOrderId: null,
+                splitOrderIds: null,
+                retained: false,
+                message: `GraphQL retry failure: ${err.message}`,
+              },
+            });
+          }
+        } catch (dbErr) {
+          console.warn(
+            "Failed to write GraphQL retry alert to DB:",
+            dbErr.message
+          );
+        }
         throw err;
       }
       const delay =
@@ -267,7 +331,12 @@ export const action = async ({ request }) => {
       return new Response(JSON.stringify({ message: "Splitting disabled." }));
     }
 
-    const orderGid = `gid://shopify/Order/${payload.id}`;
+    const orderId = sanitizeOrderId(payload.id);
+    const orderGid = `gid://shopify/Order/${orderId}`;
+    const customerId = sanitizeCustomerId(payload?.customer?.id);
+    const sanitizedShipping = sanitizeShippingAddress(
+      payload?.shipping_address
+    );
 
     // 1. Fetch order details
     const orderRespData = await graphqlWithRetry(
@@ -275,6 +344,7 @@ export const action = async ({ request }) => {
       GET_ORDER_DETAILS_QUERY,
       {
         variables: { id: orderGid },
+        meta: { shop },
       }
     );
     const order = orderRespData?.data?.order;
@@ -305,27 +375,34 @@ export const action = async ({ request }) => {
     // 3. Check payment status
     if (order.displayFinancialStatus !== "PAID") {
       console.log(`Order ${order.name} is not fully paid.`);
+
+      // Tag the order so merchants can identify unpaid orders (best-effort)
+      try {
+        await graphqlWithRetry(admin, TAGS_ADD_MUTATION, {
+          variables: { id: orderGid, tags: ["order-not-paid"] },
+          meta: { shop },
+        });
+      } catch (tagErr) {
+        console.warn("Failed to tag unpaid order:", tagErr.message);
+      }
+
+      // Record in our DB for visibility (best-effort)
+      try {
+        await db.splitLog.create({
+          data: {
+            shop,
+            originalOrderId: clampString(order.name, 255),
+            splitOrderIds: null,
+            retained: true,
+            message: clampString("Order not paid.", 1000),
+          },
+        });
+      } catch (dbErr) {
+        console.warn("Failed to write unpaid order to DB:", dbErr.message);
+      }
+
       return new Response(JSON.stringify({ message: "Order not paid." }));
     }
-    // Tag the order and record the event so merchants can identify unpaid orders
-    try {
-      await graphqlWithRetry(admin, TAGS_ADD_MUTATION, {
-        variables: { id: orderGid, tags: ["order-not-paid"] },
-      });
-    } catch (tagErr) {
-      console.warn("Failed to tag unpaid order:", tagErr.message);
-    }
-
-    await db.splitLog.create({
-      data: {
-        shop,
-        originalOrderId: order.name,
-        retained: true,
-        message: "Order not paid.",
-      },
-    });
-
-    return new Response(JSON.stringify({ message: "Order not paid." }));
 
     const lineItems = order.lineItems.nodes;
     const presaleItems = [];
@@ -363,12 +440,14 @@ export const action = async ({ request }) => {
       await db.splitLog.create({
         data: {
           shop,
-          originalOrderId: order.name,
+          originalOrderId: clampString(order.name, 255),
           retained: true,
-          message:
+          message: clampString(
             presaleItems.length === 0
               ? "No pre-sale items in order."
               : "All items are pre-sale; order retained.",
+            1000
+          ),
         },
       });
       console.log(`Order ${order.name} retained. Reason: ${tag}`);
@@ -418,11 +497,16 @@ export const action = async ({ request }) => {
             variantId: item.variant.id,
             quantity: item.quantity,
           })),
-          shippingAddress: payload.shipping_address,
-          customer: { id: `gid://shopify/Customer/${payload.customer.id}` },
+          shippingAddress: sanitizedShipping || undefined,
+          customer: customerId
+            ? { id: `gid://shopify/Customer/${customerId}` }
+            : undefined,
           tags: ["split-child"],
           // You may want to set a note or metafields on the draft to record origin
-          note: `Split from ${order.name} for location ${locationCode}`,
+          note: clampString(
+            `Split from ${clampString(order.name, 200)} for location ${locationCode}`,
+            500
+          ),
         };
 
         try {
@@ -432,6 +516,7 @@ export const action = async ({ request }) => {
             CREATE_ORDER_MUTATION,
             {
               variables: { input: draftInput },
+              meta: { shop },
             }
           );
 
@@ -454,6 +539,7 @@ export const action = async ({ request }) => {
             DRAFT_ORDER_COMPLETE_MUTATION,
             {
               variables: { id: draftOrder.id },
+              meta: { shop },
             }
           );
 
@@ -567,6 +653,7 @@ export const action = async ({ request }) => {
               ORDER_EDIT_REMOVE_LINEITEM_MUTATION,
               {
                 variables: { id: calculatedOrderId, lineItemId: calculated.id },
+                meta: { shop },
               }
             );
             const removeErrors =
@@ -586,6 +673,7 @@ export const action = async ({ request }) => {
                   lineItemId: calculated.id,
                   quantity: newQty,
                 },
+                meta: { shop },
               }
             );
             const setErrors =
@@ -617,6 +705,7 @@ export const action = async ({ request }) => {
             notifyCustomer: false,
             staffNote: "Order split: pre-sale items removed",
           },
+          meta: { shop },
         }
       );
 
@@ -635,6 +724,7 @@ export const action = async ({ request }) => {
     try {
       await graphqlWithRetry(admin, TAGS_ADD_MUTATION, {
         variables: { id: orderGid, tags: ["split-processed"] },
+        meta: { shop },
       });
     } catch (tagErr) {
       console.warn(
@@ -654,6 +744,7 @@ export const action = async ({ request }) => {
           value: splitId,
           type: "single_line_text_field",
         },
+        meta: { shop },
       });
     } catch (mfErr) {
       console.warn("Failed to upsert split_id metafield:", mfErr.message);
@@ -663,10 +754,13 @@ export const action = async ({ request }) => {
     await db.splitLog.create({
       data: {
         shop,
-        originalOrderId: order.name,
-        splitOrderIds: splitOrderIds.join(","),
+        originalOrderId: clampString(order.name, 255),
+        splitOrderIds: clampString(splitOrderIds.join(","), 1000),
         retained: false,
-        message: `Order split into ${splitOrderIds.length} new orders.`,
+        message: clampString(
+          `Order split into ${splitOrderIds.length} new orders.`,
+          1000
+        ),
       },
     });
 
