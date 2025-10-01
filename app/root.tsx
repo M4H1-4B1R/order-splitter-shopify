@@ -1,7 +1,8 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import { AppProvider } from "@shopify/polaris";
 // Import the stylesheet as a URL so we can return it from links()
-import polarisStylesUrl from "@shopify/polaris/build/esm/styles.css";
+// Use Vite's ?url to import the stylesheet as a URL token that can be used in links()
+import polarisStylesUrl from "@shopify/polaris/build/esm/styles.css?url";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStylesUrl }];
 
