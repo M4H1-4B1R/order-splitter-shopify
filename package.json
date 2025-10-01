@@ -34,6 +34,7 @@
     "@shopify/polaris": "^13.9.5",
     "@shopify/shopify-app-react-router": "^0.1.1",
     "@shopify/shopify-app-session-storage-prisma": "^6.0.0",
+    "@supabase/supabase-js": "^2.58.0",
     "date-fns": "^4.1.0",
     "isbot": "^5.1.0",
     "prisma": "^6.2.1",
