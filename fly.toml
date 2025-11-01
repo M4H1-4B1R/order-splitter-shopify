@@ -16,6 +16,7 @@ primary_region = 'sin'
   SCOPES = ''
   SHOPIFY_API_KEY = '8a2c0d26be7c23277950537f65d74dea'
   SHOPIFY_APP_URL = 'https://order-splitter-shopify-winter-sun-4284.fly.dev'
+	DIRECT_URL = 'postgresql://postgres.exngytfaubwbimjbezzn:ChronoSplit2024!.@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres'
 
 [http_service]
   internal_port = 3000
