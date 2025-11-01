@@ -1,20 +1,23 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "34f78572c2ea78c4885d7cf1eed5a6dc"
-name = "order-splitter-next"
-application_url = "https://shopify.dev/apps/default-app-home"
+client_id = "8a2c0d26be7c23277950537f65d74dea"
+name = "Chrono Split"
+application_url = "https://order-splitter-shopify-winter-sun-4284.fly.dev"
 embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-include_config_on_deploy = true
 
 [webhooks]
-api_version = "2025-10"
+api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = ""
 
 [auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+redirect_urls = [
+  "https://order-splitter-shopify-winter-sun-4284.fly.dev/auth/callback",
+  "https://order-splitter-shopify-winter-sun-4284.fly.dev/auth/shopify/callback",
+  "https://order-splitter-shopify-winter-sun-4284.fly.dev/api/auth/callback"
+]
