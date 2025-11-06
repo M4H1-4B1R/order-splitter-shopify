@@ -1,0 +1,4 @@
+PORT = "8081"
+HOST = "https://order-splitter-shopify.fly.dev"
+SHOPIFY_API_KEY = "8a2c0d26be7c23277950537f65d74dea"
+application_url = "https://order-splitter-shopify.fly.dev"

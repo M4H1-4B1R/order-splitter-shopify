@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for order-splitter-shopify-winter-sun-4284 on 2025-11-01T16:50:42+06:00
+# fly.toml app configuration file generated for chrono-split on 2025-11-06T19:31:34+06:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'order-splitter-shopify-winter-sun-4284'
+app = 'chrono-split'
 primary_region = 'sin'
 
 [build]
@@ -13,10 +13,9 @@ primary_region = 'sin'
 
 [env]
   PORT = '3000'
-  SCOPES = ''
+  SCOPES = 'read_channels,read_checkouts,read_customers,read_discounts,read_draft_orders,read_inventory,read_locations,read_order_edits,read_orders,read_price_rules,read_products,read_validations,write_channels,write_checkouts,write_customers,write_discounts,write_draft_orders,write_inventory,write_locations,write_order_edits,write_orders,write_price_rules,write_products,write_validations'
   SHOPIFY_API_KEY = '8a2c0d26be7c23277950537f65d74dea'
-  SHOPIFY_APP_URL = 'https://order-splitter-shopify-winter-sun-4284.fly.dev'
-	DIRECT_URL = 'postgresql://postgres.exngytfaubwbimjbezzn:ChronoSplit2024!.@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres'
+  SHOPIFY_APP_URL = 'https://chrono-split.fly.dev'
 
 [http_service]
   internal_port = 3000

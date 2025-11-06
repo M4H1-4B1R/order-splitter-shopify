@@ -2,7 +2,7 @@
 
 client_id = "8a2c0d26be7c23277950537f65d74dea"
 name = "Chrono Split"
-application_url = "https://order-splitter-shopify-winter-sun-4284.fly.dev"
+application_url = "https://chrono-split.fly.dev"
 embedded = true
 
 [build]
@@ -13,11 +13,13 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = ""
+scopes = "read_validations,write_validations,read_channels,write_channels,write_checkouts,read_checkouts,read_customers,write_customers,read_price_rules,write_price_rules,read_discounts,write_discounts,write_draft_orders,read_draft_orders,write_inventory,read_inventory,write_locations,read_locations,write_order_edits,read_order_edits,read_orders,write_orders,read_products,write_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://order-splitter-shopify-winter-sun-4284.fly.dev/auth/callback",
-  "https://order-splitter-shopify-winter-sun-4284.fly.dev/auth/shopify/callback",
-  "https://order-splitter-shopify-winter-sun-4284.fly.dev/api/auth/callback"
+  "https://chrono-split.fly.dev/auth/callback",
+  "https://chrono-split.fly.dev/auth/shopify/callback",
+  "https://chrono-split.fly.dev/api/auth/callback"
 ]
