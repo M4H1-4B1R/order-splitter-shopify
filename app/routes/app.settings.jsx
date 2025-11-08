@@ -41,17 +41,42 @@ export const loader = async ({ request }) => {
             }
           }
         }
-      }`
+      }`,
   );
   let locations = [];
+  let locationError = null;
+
   try {
+    console.log("=== LOCATION DEBUG START ===");
+    console.log("GraphQL Response Status:", locationsResponse.status);
+    console.log("GraphQL Response OK:", locationsResponse.ok);
+
+    if (!locationsResponse.ok) {
+      throw new Error(
+        `GraphQL request failed with status: ${locationsResponse.status}`,
+      );
+    }
+
     const locationsData = await locationsResponse.json();
+    console.log("Raw locations data:", JSON.stringify(locationsData, null, 2));
+
+    // Check for GraphQL errors
+    if (locationsData.errors) {
+      console.error("GraphQL errors:", locationsData.errors);
+      locationError = `GraphQL errors: ${JSON.stringify(locationsData.errors)}`;
+      throw new Error(locationError);
+    }
+
     locations = (locationsData?.data?.locations?.edges || []).map(
-      (edge) => edge.node
+      (edge) => edge.node,
     );
+    console.log("Processed locations:", locations);
+    console.log("Number of locations found:", locations.length);
+    console.log("=== LOCATION DEBUG END ===");
   } catch (err) {
-    // If Shopify graphql query fails for any reason, continue with empty locations
     console.error("Failed to fetch locations from Shopify:", err);
+    console.error("Error details:", err.message);
+    locationError = err.message;
     locations = [];
   }
 
@@ -60,6 +85,7 @@ export const loader = async ({ request }) => {
     settings: settings || { splittingEnabled: false },
     mappings: mappings || [],
     locations,
+    locationError, // Include error info for debugging
   });
 };
 
@@ -139,14 +165,15 @@ export default function AppSettings() {
     settings = { splittingEnabled: false },
     mappings = [],
     locations = [],
+    locationError = null,
   } = loaderData;
 
   const [splittingEnabled, setSplittingEnabled] = useState(
-    Boolean(settings.splittingEnabled)
+    Boolean(settings.splittingEnabled),
   );
   const [newCode, setNewCode] = useState("");
   const [selectedLocation, setSelectedLocation] = useState(
-    locations[0]?.id || ""
+    locations.length > 0 ? locations[0].id : "",
   );
 
   const handleSaveSettings = () => {
@@ -198,6 +225,49 @@ export default function AppSettings() {
             Map your product/variant `location_code` metafields to Shopify
             inventory locations.
           </Text>
+
+          {/* Debug Information */}
+          {locationError && (
+            <Text variant="bodySm" color="critical">
+              Location Error: {locationError}
+            </Text>
+          )}
+
+          <Card background="bg-surface-info">
+            <BlockStack gap="200">
+              <Text variant="headingSm" color="text-info">
+                Debug Information
+              </Text>
+              <Text variant="bodySm">
+                <strong>Locations found:</strong> {locations.length}
+              </Text>
+              {locations.length > 0 ? (
+                <BlockStack gap="100">
+                  <Text variant="bodySm">
+                    <strong>Available locations:</strong>
+                  </Text>
+                  {locations.map((loc) => (
+                    <Text key={loc.id} variant="bodySm">
+                      • {loc.name} (ID: {loc.id})
+                    </Text>
+                  ))}
+                </BlockStack>
+              ) : (
+                <Text variant="bodySm" color="critical">
+                  No locations found - this could indicate:
+                  <br />• Missing read_locations scope
+                  <br />• No locations configured in Shopify
+                  <br />• Authentication issues
+                </Text>
+              )}
+              {locationError && (
+                <Text variant="bodySm" color="critical">
+                  <strong>Error details:</strong> {locationError}
+                </Text>
+              )}
+            </BlockStack>
+          </Card>
+
           <FormLayout>
             <FormLayout.Group>
               <TextField
@@ -212,6 +282,11 @@ export default function AppSettings() {
                 options={locationOptions}
                 onChange={setSelectedLocation}
                 value={selectedLocation}
+                placeholder={
+                  locations.length === 0
+                    ? "No locations found"
+                    : "Select a location"
+                }
               />
             </FormLayout.Group>
             <Button
